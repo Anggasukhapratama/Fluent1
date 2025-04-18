@@ -6,12 +6,37 @@ import '../../home/views/home_view.dart';
 class AuthController extends GetxController {
   final usernameController = TextEditingController();
   final passwordController = TextEditingController();
+  final emailController = TextEditingController(); // Tambahkan email controller
+  final genderController =
+      TextEditingController(); // Tambahkan gender controller
+  final occupationController =
+      TextEditingController(); // Tambahkan occupation controller
+
   final api = ApiService();
 
   Future<void> register() async {
+    final email = emailController.text.trim();
+    final username = usernameController.text.trim();
+    final password = passwordController.text.trim();
+    final gender = genderController.text.trim(); // Ambil nilai gender
+    final occupation =
+        occupationController.text.trim(); // Ambil nilai occupation
+
+    if (email.isEmpty ||
+        username.isEmpty ||
+        password.isEmpty ||
+        gender.isEmpty ||
+        occupation.isEmpty) {
+      Get.snackbar("Error", "Semua field wajib diisi");
+      return;
+    }
+
     final res = await api.register(
-      usernameController.text,
-      passwordController.text,
+      email,
+      username,
+      password,
+      gender,
+      occupation,
     );
     Get.snackbar(res['status'], res['message']);
     if (res['status'] == 'success') {

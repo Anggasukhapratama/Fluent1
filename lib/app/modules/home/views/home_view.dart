@@ -18,7 +18,31 @@ class HomeView extends StatelessWidget {
           ),
         ],
       ),
-      body: const Center(child: Text("Selamat datang di Home!")),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              "Selamat datang di Home!",
+              style: TextStyle(fontSize: 18),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () {
+                Get.toNamed('/camera-analysis');
+              },
+              icon: const Icon(Icons.camera_alt),
+              label: const Text("Mulai Deteksi Kamera"),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
