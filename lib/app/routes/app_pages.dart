@@ -3,6 +3,8 @@ import 'package:get/get.dart';
 import '../modules/auth/bindings/auth_binding.dart';
 import '../modules/camera_analysis/bindings/camera_analysis_binding.dart';
 import '../modules/camera_analysis/views/camera_analysis_view.dart';
+import '../modules/detection/bindings/detection_binding.dart';
+import '../modules/detection/views/detection_view.dart';
 import '../modules/home/bindings/home_binding.dart';
 import '../modules/home/views/home_view.dart';
 import '../modules/intro/bindings/intro_binding.dart';
@@ -51,6 +53,11 @@ class AppPages {
       name: _Paths.INTRO,
       page: () => IntroView(),
       binding: IntroBinding(),
+    ),
+    GetPage(
+      name: _Paths.DETECTION,
+      page: () => DetectionView(),
+      binding: DetectionBinding(),
     ),
   ];
 }

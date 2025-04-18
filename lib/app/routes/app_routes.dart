@@ -9,6 +9,7 @@ abstract class Routes {
   static const CAMERA_ANALYSIS = _Paths.CAMERA_ANALYSIS;
   static const SPLASH = _Paths.SPLASH;
   static const INTRO = _Paths.INTRO;
+  static const DETECTION = _Paths.DETECTION;
 }
 
 abstract class _Paths {
@@ -19,4 +20,5 @@ abstract class _Paths {
   static const CAMERA_ANALYSIS = '/camera-analysis';
   static const SPLASH = '/splash';
   static const INTRO = '/intro';
+  static const DETECTION = '/detection';
 }

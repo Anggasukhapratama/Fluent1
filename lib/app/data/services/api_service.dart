@@ -82,4 +82,22 @@ class ApiService {
       return {"status": "fail", "message": "Pose analysis error: $e"};
     }
   }
+
+  // Analyze Realtime
+  Future<Map<String, dynamic>> analyzeRealtime() async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/analyze_realtime'));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {
+          "status": "fail",
+          "message": "Analyze error: ${response.statusCode}",
+        };
+      }
+    } catch (e) {
+      return {"status": "fail", "message": "Analyze error: $e"};
+    }
+  }
 }
