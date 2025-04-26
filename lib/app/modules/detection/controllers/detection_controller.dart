@@ -4,12 +4,14 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:http/http.dart' as http;
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:fluent/app/data/services/api_service.dart';
 
 class DetectionController extends GetxController {
   late CameraController cameraController;
   late List<CameraDescription> cameras;
+  final ApiService apiService = ApiService();
+  final stt.SpeechToText speech = stt.SpeechToText();
 
   // Camera & Analysis States
   RxBool isCameraInitialized = false.obs;
@@ -20,11 +22,10 @@ class DetectionController extends GetxController {
   RxString emotion = "-".obs;
   RxString mouth = "-".obs;
   RxString pose = "-".obs;
-  RxString result = "Menunggu analisis...".obs;
+  RxString result = "Waiting for analysis...".obs;
   RxString summary = "".obs;
 
   // Speech Recognition
-  final stt.SpeechToText speech = stt.SpeechToText();
   RxBool isListening = false.obs;
   RxString recognizedText = ''.obs;
   RxDouble confidence = 0.0.obs;
@@ -36,6 +37,8 @@ class DetectionController extends GetxController {
   RxBool showInstructions = true.obs;
   RxBool showScript = false.obs;
   RxBool showResults = false.obs;
+  RxBool showCustomScriptInput = false.obs;
+  TextEditingController customScriptController = TextEditingController();
 
   // Performance Metrics
   RxDouble speechAccuracy = 0.0.obs;
@@ -45,9 +48,15 @@ class DetectionController extends GetxController {
   RxInt wordsPerMinute = 0.obs;
 
   // Script Management
-  RxList<String> scriptParts = RxList<String>();
+  RxList<String> scriptParts = <String>[].obs;
   RxInt currentScriptIndex = 0.obs;
   RxString currentScriptPart = "".obs;
+
+  // Timer and Countdown
+  RxInt countdown = 0.obs;
+  RxString elapsedTime = "00:00".obs;
+  DateTime? recordingStartTime;
+  Timer? elapsedTimer;
 
   final Map<String, List<String>> interviewScripts = {
     'medium': [
@@ -56,11 +65,6 @@ class DetectionController extends GetxController {
       "Pengalaman kerja saya selama [X tahun] di bidang [Bidang Anda].",
       "Saya menguasai keterampilan [Skill 1], [Skill 2], dan [Skill 3].",
       "Pencapaian terbesar saya adalah [Jelaskan Pencapaian].",
-      "Saya tertarik dengan posisi ini karena [Alasan Anda].",
-      "Kelebihan saya adalah [Sebutkan Kelebihan].",
-      "Saya bisa bekerja mandiri maupun dalam tim.",
-      "Saya selalu berusaha meningkatkan kemampuan diri.",
-      "Terima kasih atas kesempatan wawancara ini.",
     ],
     'hard': [
       "Visi saya dalam 5 tahun ke depan adalah menjadi ahli di bidang ini.",
@@ -68,32 +72,27 @@ class DetectionController extends GetxController {
       "Saya terbiasa bekerja di bawah tekanan dengan target ketat.",
       "Salah satu tantangan terberat saya adalah [Ceritakan Tantangan].",
       "Saya memecahkan masalah [Contoh Masalah] dengan solusi [Solusi Anda].",
-      "Pendekatan saya terhadap konflik di tempat kerja adalah [Jelaskan Pendekatan].",
-      "Saya percaya inovasi harus seimbang dengan eksekusi yang solid.",
-      "Strategi saya untuk meningkatkan produktivitas tim adalah [Jelaskan Strategi].",
-      "Saya mengikuti perkembangan industri melalui [Sebutkan Cara].",
-      "Saya siap memberikan kontribusi signifikan untuk perusahaan ini.",
     ],
+    'custom': ["Custom script will appear here"],
   };
 
   Timer? _timer;
   Timer? _scriptTimer;
   DateTime? _startTime;
 
-  get stopInterviewPractice => null;
-
   @override
-  void onInit() {
+  void onInit() async {
     super.onInit();
-    initializeCamera();
-    initSpeech();
+    await ApiService.init();
+    await initializeCamera();
+    await initSpeech();
   }
 
   Future<void> initializeCamera() async {
     try {
       cameras = await availableCameras();
       if (cameras.isEmpty) {
-        result.value = "Tidak ada kamera yang tersedia";
+        result.value = "No cameras available";
         return;
       }
 
@@ -106,7 +105,7 @@ class DetectionController extends GetxController {
       await cameraController.initialize();
       isCameraInitialized.value = true;
     } catch (e) {
-      result.value = "Gagal menginisialisasi kamera: $e";
+      result.value = "Failed to initialize camera: $e";
     }
   }
 
@@ -131,18 +130,60 @@ class DetectionController extends GetxController {
     await initializeCamera();
   }
 
+  void startCountdown() async {
+    countdown.value = 3;
+    showScript.value = false;
+
+    // Countdown from 3 to 1
+    Timer.periodic(Duration(seconds: 1), (timer) {
+      if (countdown.value > 1) {
+        countdown.value--;
+      } else {
+        timer.cancel();
+        countdown.value = 0;
+        startInterviewPractice();
+      }
+    });
+  }
+
   void startInterviewPractice() {
     showScript.value = false;
     showResults.value = false;
 
-    scriptParts.value = interviewScripts[selectedDifficulty.value]!;
+    if (selectedDifficulty.value == 'custom') {
+      scriptParts.value =
+          customScriptController.text
+              .split('\n')
+              .where((line) => line.trim().isNotEmpty)
+              .toList();
+    } else {
+      scriptParts.value = interviewScripts[selectedDifficulty.value]!;
+    }
+
     currentScriptIndex.value = 0;
     currentScriptPart.value = scriptParts[0];
 
-    startListening();
-    startRealtimeDetection();
+    // Start elapsed time timer
+    recordingStartTime = DateTime.now();
+    elapsedTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      final duration = DateTime.now().difference(recordingStartTime!);
+      final minutes = duration.inMinutes
+          .remainder(60)
+          .toString()
+          .padLeft(2, '0');
+      final seconds = duration.inSeconds
+          .remainder(60)
+          .toString()
+          .padLeft(2, '0');
+      elapsedTime.value = '$minutes:$seconds';
+    });
 
-    // Change to 5 seconds per sentence for faster display
+    // Start listening after a small delay
+    Future.delayed(Duration(milliseconds: 500), () {
+      startListening();
+      startRealtimeDetection();
+    });
+
     _scriptTimer = Timer.periodic(Duration(seconds: 5), (timer) {
       if (currentScriptIndex.value < scriptParts.length - 1) {
         currentScriptIndex.value++;
@@ -151,6 +192,20 @@ class DetectionController extends GetxController {
         timer.cancel();
       }
     });
+  }
+
+  void resetInterview() {
+    showInstructions.value = true;
+    showScript.value = false;
+    showResults.value = false;
+    showCustomScriptInput.value = false;
+    isRecording.value = false;
+    isListening.value = false;
+    speech.stop();
+    _timer?.cancel();
+    _scriptTimer?.cancel();
+    elapsedTimer?.cancel();
+    elapsedTime.value = "00:00";
   }
 
   void startListening() {
@@ -173,12 +228,64 @@ class DetectionController extends GetxController {
     isListening.value = true;
   }
 
-  Future<void> startRealtimeDetection() async {
-    if (!isCameraInitialized.value) return;
+  void _analyzeSpeech(String spokenText) {
+    isAnalyzingSpeech.value = true;
 
+    final currentScript = scriptParts[currentScriptIndex.value];
+    final similarity = _calculateSimilarity(spokenText, currentScript);
+    speechAccuracy.value = similarity * 100;
+
+    final wordCount = spokenText.split(' ').length;
+    final timeElapsed = DateTime.now().difference(_startTime!).inSeconds;
+    wordsPerMinute.value = (wordCount / timeElapsed * 60).round();
+
+    // Detect filler words
+    final fillerWords = ['umm', 'ahh', 'ehh', 'mmm', 'hmm'];
+    pauseCount.value =
+        spokenText
+            .toLowerCase()
+            .split(' ')
+            .where((word) => fillerWords.contains(word))
+            .length;
+
+    fluencyScore.value = 100 - (pauseCount.value * 2);
+    isAnalyzingSpeech.value = false;
+  }
+
+  double _calculateSimilarity(String a, String b) {
+    final cleanA = a.replaceAll(RegExp(r'[^\w\s]'), '');
+    final cleanB = b.replaceAll(RegExp(r'[^\w\s]'), '');
+    final setA = cleanA.split(' ').toSet();
+    final setB = cleanB.split(' ').toSet();
+    final intersection = setA.intersection(setB).length;
+    final union = setA.union(setB).length;
+    return union == 0 ? 0 : intersection / union;
+  }
+
+  Future<void> analyzeSnapshot() async {
+    if (!cameraController.value.isInitialized || !isRecording.value) return;
+
+    try {
+      final XFile file = await cameraController.takePicture();
+      final bytes = await file.readAsBytes();
+      final base64Image = base64Encode(bytes);
+
+      final response = await apiService.analyzeRealtime(base64Image);
+
+      if (response['status'] == 'success') {
+        emotion.value = response['results']['emotion'] ?? "-";
+        mouth.value = response['results']['mouth'] ?? "-";
+        pose.value = response['results']['pose'] ?? "-";
+      } else {
+        print("Analysis error: ${response['message']}");
+      }
+    } catch (e) {
+      print("Error analyzing frame: $e");
+    }
+  }
+
+  void startRealtimeDetection() {
     isRecording.value = true;
-    result.value = "Memulai analisis realtime...";
-
     _timer?.cancel();
     _timer = Timer.periodic(Duration(seconds: 2), (timer) async {
       await analyzeSnapshot();
@@ -191,6 +298,7 @@ class DetectionController extends GetxController {
     speech.stop();
     _timer?.cancel();
     _scriptTimer?.cancel();
+    elapsedTimer?.cancel();
 
     final duration = DateTime.now().difference(_startTime!).inSeconds;
     wordsPerMinute.value =
@@ -200,166 +308,26 @@ class DetectionController extends GetxController {
     showResults.value = true;
   }
 
-  void _analyzeSpeech(String spokenText) {
-    isAnalyzingSpeech.value = true;
-
-    final currentScript = scriptParts[currentScriptIndex.value];
-
-    double similarity = _calculateSimilarity(
-      spokenText.toLowerCase(),
-      currentScript.toLowerCase(),
-    );
-
-    speechAccuracy.value = similarity * 100;
-
-    final wordCount = spokenText.split(' ').length;
-    final timeElapsed = DateTime.now().difference(_startTime!).inSeconds;
-    wordsPerMinute.value = (wordCount / timeElapsed * 60).round();
-
-    // Ideal WPM for speech: 120-150
-    if (wordsPerMinute.value < 100) {
-      if (!speechErrors.contains('Berbicara terlalu lambat')) {
-        speechErrors.add(
-          'Berbicara terlalu lambat (${wordsPerMinute.value} WPM)',
-        );
-      }
-    } else if (wordsPerMinute.value > 180) {
-      if (!speechErrors.contains('Berbicara terlalu cepat')) {
-        speechErrors.add(
-          'Berbicara terlalu cepat (${wordsPerMinute.value} WPM)',
-        );
-      }
-    }
-
-    // Detect filler words
-    final fillerWords = ['umm', 'ahh', 'ehh', 'mmm', 'hmm'];
-    int fillerCount =
-        spokenText
-            .toLowerCase()
-            .split(' ')
-            .where((word) => fillerWords.contains(word))
-            .length;
-    pauseCount.value = fillerCount;
-
-    if (fillerCount > 5 &&
-        !speechErrors.contains('Terlalu banyak kata pengisi')) {
-      speechErrors.add('Terlalu banyak kata pengisi (umm, ahh)');
-    }
-
-    fluencyScore.value =
-        100 -
-        (fillerCount * 2 +
-            (wordsPerMinute.value < 100 || wordsPerMinute.value > 180
-                ? 20
-                : 0));
-
-    isAnalyzingSpeech.value = false;
-  }
-
-  double _calculateSimilarity(String a, String b) {
-    // Remove punctuation for better comparison
-    String cleanA = a.replaceAll(RegExp(r'[^\w\s]'), '');
-    String cleanB = b.replaceAll(RegExp(r'[^\w\s]'), '');
-
-    Set<String> setA = cleanA.split(' ').toSet();
-    Set<String> setB = cleanB.split(' ').toSet();
-
-    int intersection = setA.intersection(setB).length;
-    int union = setA.union(setB).length;
-
-    return union == 0 ? 0 : intersection / union;
-  }
-
-  Future<void> analyzeSnapshot() async {
-    if (!cameraController.value.isInitialized || !isRecording.value) return;
-
-    try {
-      final XFile file = await cameraController.takePicture();
-      final bytes = await file.readAsBytes();
-      final base64Image = base64Encode(bytes);
-
-      final response = await http
-          .post(
-            Uri.parse("http://192.168.167.186:5000/analyze_realtime"),
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({"frame": base64Image}),
-          )
-          .timeout(Duration(seconds: 5));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['status'] == 'success') {
-          emotion.value = data['results']['emotion'] ?? "-";
-          mouth.value = data['results']['mouth'] ?? "-";
-          pose.value = data['results']['pose'] ?? "-";
-        }
-      }
-    } catch (e) {
-      print("Error analyzing frame: $e");
-    }
-  }
-
   String _generateEnhancedSummary() {
     final buffer = StringBuffer();
-
-    buffer.writeln("=== HASIL ANALISIS WAWANCARA ===");
-    buffer.writeln("Skor Akurasi: ${speechAccuracy.value.toStringAsFixed(1)}%");
-    buffer.writeln("Kecepatan Bicara: ${wordsPerMinute.value} kata per menit");
-    buffer.writeln("Jumlah Kata Pengisi: ${pauseCount.value}");
-
-    if (speechAccuracy.value >= 80) {
-      buffer.writeln("\n✅ Pembacaan Anda sangat akurat!");
-    } else if (speechAccuracy.value >= 60) {
-      buffer.writeln(
-        "\n⚠️ Pembacaan Anda cukup baik, tetapi masih ada beberapa kesalahan",
-      );
-    } else {
-      buffer.writeln(
-        "\n❌ Pembacaan Anda masih banyak kesalahan, perlu lebih banyak latihan",
-      );
-    }
-
-    buffer.writeln("\n=== ANALISIS BAHASA TUBUH ===");
-    buffer.writeln("Ekspresi: ${emotion.value}");
-    buffer.writeln("Gerakan Mulut: ${mouth.value}");
-    buffer.writeln("Postur: ${pose.value}");
-
-    buffer.writeln("\n=== SARAN PERBAIKAN ===");
-    if (wordsPerMinute.value < 100) {
-      buffer.writeln("- Cobalah berbicara lebih cepat");
-    } else if (wordsPerMinute.value > 180) {
-      buffer.writeln("- Cobalah berbicara lebih lambat dan jelas");
-    }
-
-    if (pauseCount.value > 5) {
-      buffer.writeln("- Kurangi penggunaan kata pengisi seperti 'umm', 'ahh'");
-    }
-
-    if (speechAccuracy.value < 80) {
-      buffer.writeln("- Latih pengucapan kalimat dengan lebih baik");
-      buffer.writeln("- Perhatikan intonasi dan penekanan kata");
-    }
-
+    buffer.writeln("=== INTERVIEW ANALYSIS RESULTS ===");
+    buffer.writeln("Accuracy: ${speechAccuracy.value.toStringAsFixed(1)}%");
+    buffer.writeln("Speaking Rate: ${wordsPerMinute.value} WPM");
+    buffer.writeln("Filler Words: ${pauseCount.value}");
+    buffer.writeln("\nEmotion: ${emotion.value}");
+    buffer.writeln("Mouth Movement: ${mouth.value}");
+    buffer.writeln("Posture: ${pose.value}");
     return buffer.toString();
-  }
-
-  void resetInterview() {
-    showInstructions.value = true;
-    showScript.value = false;
-    showResults.value = false;
-    isRecording.value = false;
-    isListening.value = false;
-    speech.stop();
-    _timer?.cancel();
-    _scriptTimer?.cancel();
   }
 
   @override
   void onClose() {
     _timer?.cancel();
     _scriptTimer?.cancel();
+    elapsedTimer?.cancel();
     speech.stop();
     cameraController.dispose();
+    customScriptController.dispose();
     super.onClose();
   }
 }

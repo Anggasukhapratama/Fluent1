@@ -17,8 +17,9 @@ class HomeView extends StatelessWidget {
         InkWell(
           onTap: () {
             if (title == "Latihan") {
-              // Navigasi ke halaman Detection menggunakan GetX
               Get.toNamed(Routes.DETECTION);
+            } else if (title == "Interview") {
+              Get.toNamed(Routes.INTERVIEW);
             }
           },
           child: Text(title, style: const TextStyle(fontSize: 12)),
@@ -113,10 +114,13 @@ class HomeView extends StatelessWidget {
                 runSpacing: 20,
                 alignment: WrapAlignment.start,
                 children: [
-                  // Only show the Latihan button
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: menuItem("Latihan", Icons.camera_alt, Colors.orange),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: menuItem("Interview", Icons.mic, Colors.blue),
                   ),
                 ],
               ),

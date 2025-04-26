@@ -10,6 +10,7 @@ abstract class Routes {
   static const SPLASH = _Paths.SPLASH;
   static const INTRO = _Paths.INTRO;
   static const DETECTION = _Paths.DETECTION;
+  static const INTERVIEW = _Paths.INTERVIEW;
 }
 
 abstract class _Paths {
@@ -21,4 +22,5 @@ abstract class _Paths {
   static const SPLASH = '/splash';
   static const INTRO = '/intro';
   static const DETECTION = '/detection';
+  static const INTERVIEW = '/interview';
 }

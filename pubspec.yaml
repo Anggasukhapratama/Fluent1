@@ -44,7 +44,9 @@ dependencies:
   flutter_tts: ^3.6.3
   audioplayers: ^5.2.1
   path: ^1.8.3
-  
+  flutter_sound: ^9.2.13
+  lucide_icons: 0.257.0
+  shared_preferences: ^2.2.2
 
 
 dev_dependencies:
