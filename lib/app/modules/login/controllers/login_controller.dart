@@ -6,7 +6,6 @@ import 'package:fluent/app/routes/app_pages.dart';
 class LoginController extends GetxController {
   final usernameController = TextEditingController();
   final passwordController = TextEditingController();
-
   final ApiService _apiService = ApiService();
 
   void login() async {
@@ -22,7 +21,7 @@ class LoginController extends GetxController {
     if (result['status'] == 'success') {
       Get.offAllNamed(Routes.HOME);
     } else {
-      Get.snackbar("Login Gagal", result['message']);
+      Get.snackbar("Login Gagal", result['message'] ?? "Terjadi kesalahan");
     }
   }
 }

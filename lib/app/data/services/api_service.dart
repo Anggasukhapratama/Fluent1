@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiService {
   static String? _accessToken;
   static String? _refreshToken;
-  final String baseUrl = 'http://16.16.22.225:5000';
+  final String baseUrl = 'http://192.168.101.186:5000'; // Your Flask API URL
 
   // Initialize with saved tokens
   static Future<void> init() async {
@@ -28,11 +30,24 @@ class ApiService {
     _refreshToken = refreshToken;
   }
 
-  // Clear tokens on logout
+  // Save user data to shared preferences
+  static Future<void> _saveUserData(Map<String, dynamic> user) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('username', user['username'] ?? '');
+    await prefs.setString('email', user['email'] ?? '');
+    await prefs.setString('gender', user['gender'] ?? '');
+    await prefs.setString('occupation', user['occupation'] ?? '');
+  }
+
+  // Clear tokens and user data on logout
   static Future<void> clearTokens() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('access_token');
     await prefs.remove('refresh_token');
+    await prefs.remove('username');
+    await prefs.remove('email');
+    await prefs.remove('gender');
+    await prefs.remove('occupation');
     _accessToken = null;
     _refreshToken = null;
   }
@@ -56,11 +71,165 @@ class ApiService {
       }
       return false;
     } catch (e) {
+      print("Error refreshing token: $e");
       return false;
     }
   }
 
-  // Register user
+  // ==================== HRD SIMULATION SERVICES ====================
+
+  Future<Map<String, dynamic>> startHRSimulation(String difficulty) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/hr/start_session'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_accessToken',
+        },
+        body: jsonEncode({'difficulty': difficulty}),
+      );
+
+      if (response.statusCode == 401) {
+        final refreshed = await refreshToken();
+        if (!refreshed) throw Exception('Failed to refresh token');
+        return startHRSimulation(difficulty);
+      }
+
+      return _handleResponse(response);
+    } catch (e) {
+      return _handleError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> processHRResponse({
+    required String audioPath,
+    required String sessionId,
+    required int questionIndex,
+    required String transcript,
+  }) async {
+    try {
+      final audioFile = File(audioPath);
+      if (!await audioFile.exists()) {
+        return {'status': 'fail', 'message': 'Audio file not found'};
+      }
+
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/hr/process_response'),
+      );
+
+      request.headers['Authorization'] = 'Bearer $_accessToken';
+      request.fields['session_id'] = sessionId;
+      request.fields['question_index'] = questionIndex.toString();
+      request.fields['transcript'] = transcript;
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'audio',
+          audioPath,
+          contentType: MediaType('audio', 'wav'),
+        ),
+      );
+
+      final response = await request.send();
+      final responseData = await http.Response.fromStream(response);
+
+      if (responseData.statusCode == 401) {
+        final refreshed = await refreshToken();
+        if (!refreshed) throw Exception('Failed to refresh token');
+        return processHRResponse(
+          audioPath: audioPath,
+          sessionId: sessionId,
+          questionIndex: questionIndex,
+          transcript: transcript,
+        );
+      }
+
+      return _handleResponse(responseData);
+    } catch (e) {
+      return _handleError(e);
+    }
+  }
+
+  /// Ends HR simulation session and gets final results
+  Future<Map<String, dynamic>> endHRSimulation(String sessionId) async {
+    try {
+      var response = await http.post(
+        Uri.parse('$baseUrl/hr/end_session'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_accessToken',
+        },
+        body: jsonEncode({'session_id': sessionId}),
+      );
+
+      if (response.statusCode == 401) {
+        final refreshed = await refreshToken();
+        if (!refreshed) throw Exception('Failed to refresh token');
+        response = await http.post(
+          Uri.parse('$baseUrl/hr/end_session'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_accessToken',
+          },
+          body: jsonEncode({'session_id': sessionId}),
+        );
+      }
+
+      return _handleResponse(response);
+    } catch (e) {
+      return _handleError(e);
+    }
+  }
+
+  /// Gets HR simulation history
+  Future<Map<String, dynamic>> getHRHistory() async {
+    try {
+      var response = await http.get(
+        Uri.parse('$baseUrl/hr/history'),
+        headers: {'Authorization': 'Bearer $_accessToken'},
+      );
+
+      if (response.statusCode == 401) {
+        final refreshed = await refreshToken();
+        if (!refreshed) throw Exception('Failed to refresh token');
+        response = await http.get(
+          Uri.parse('$baseUrl/hr/history'),
+          headers: {'Authorization': 'Bearer $_accessToken'},
+        );
+      }
+
+      return _handleResponse(response);
+    } catch (e) {
+      return _handleError(e);
+    }
+  }
+
+  /// Gets details of a specific HR session
+  Future<Map<String, dynamic>> getHRSessionDetails(String sessionId) async {
+    try {
+      var response = await http.get(
+        Uri.parse('$baseUrl/hr/session/$sessionId'),
+        headers: {'Authorization': 'Bearer $_accessToken'},
+      );
+
+      if (response.statusCode == 401) {
+        final refreshed = await refreshToken();
+        if (!refreshed) throw Exception('Failed to refresh token');
+        response = await http.get(
+          Uri.parse('$baseUrl/hr/session/$sessionId'),
+          headers: {'Authorization': 'Bearer $_accessToken'},
+        );
+      }
+
+      return _handleResponse(response);
+    } catch (e) {
+      return _handleError(e);
+    }
+  }
+
+  // ==================== EXISTING SERVICES ====================
+
   Future<Map<String, dynamic>> register(
     String email,
     String username,
@@ -80,14 +249,12 @@ class ApiService {
           'occupation': occupation,
         }),
       );
-
       return _handleResponse(response);
     } catch (e) {
       return _handleError(e);
     }
   }
 
-  // Login user
   Future<Map<String, dynamic>> login(String username, String password) async {
     try {
       final response = await http.post(
@@ -99,6 +266,7 @@ class ApiService {
       final result = _handleResponse(response);
       if (result['status'] == 'success') {
         await _saveTokens(result['access_token'], result['refresh_token']);
+        if (result['user'] != null) await _saveUserData(result['user']);
       }
       return result;
     } catch (e) {
@@ -106,7 +274,6 @@ class ApiService {
     }
   }
 
-  // Analyze Realtime with JWT
   Future<Map<String, dynamic>> analyzeRealtime(String base64Image) async {
     try {
       var response = await http.post(
@@ -118,19 +285,16 @@ class ApiService {
         body: jsonEncode({'frame': base64Image}),
       );
 
-      // If token expired, try refreshing
       if (response.statusCode == 401) {
-        final refreshed = await refreshToken();
-        if (refreshed) {
-          response = await http.post(
-            Uri.parse('$baseUrl/analyze_realtime'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $_accessToken',
-            },
-            body: jsonEncode({'frame': base64Image}),
-          );
-        }
+        if (!await refreshToken()) throw Exception('Failed to refresh token');
+        response = await http.post(
+          Uri.parse('$baseUrl/analyze_realtime'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_accessToken',
+          },
+          body: jsonEncode({'frame': base64Image}),
+        );
       }
 
       return _handleResponse(response);
@@ -139,103 +303,36 @@ class ApiService {
     }
   }
 
-  // Analyze Speech
-  Future<Map<String, dynamic>> analyzeSpeech(File audioFile) async {
-    try {
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/analyze_speech'),
-      )..headers['Authorization'] = 'Bearer $_accessToken';
-
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'audio',
-          audioFile.path,
-          contentType: MediaType('audio', 'wav'),
-        ),
-      );
-
-      var response = await request.send();
-      var responseData = await response.stream.bytesToString();
-
-      // Handle token refresh if needed
-      if (response.statusCode == 401) {
-        final refreshed = await refreshToken();
-        if (refreshed) {
-          request = http.MultipartRequest(
-            'POST',
-            Uri.parse('$baseUrl/analyze_speech'),
-          )..headers['Authorization'] = 'Bearer $_accessToken';
-
-          request.files.add(
-            await http.MultipartFile.fromPath(
-              'audio',
-              audioFile.path,
-              contentType: MediaType('audio', 'wav'),
-            ),
-          );
-
-          response = await request.send();
-          responseData = await response.stream.bytesToString();
-        }
-      }
-
-      return _handleResponse(http.Response(responseData, response.statusCode));
-    } catch (e) {
-      return _handleError(e);
-    }
-  }
-
-  // Interview Management
-  Future<Map<String, dynamic>> startInterview(String category) async {
-    return _authenticatedPost('$baseUrl/api/interview/start', {
-      'category': category,
-    });
-  }
-
-  Future<Map<String, dynamic>> submitAnswer(
-    String sessionId,
-    String answerText,
-    String? audioBase64,
-  ) async {
-    return _authenticatedPost('$baseUrl/api/interview/submit', {
-      'session_id': sessionId,
-      'answer_text': answerText,
-      if (audioBase64 != null) 'audio_answer': audioBase64,
-    });
-  }
-
-  Future<Map<String, dynamic>> getInterviewResults(String sessionId) async {
-    return _authenticatedGet('$baseUrl/api/interview/results/$sessionId');
-  }
-
-  // Helper methods
-  Future<Map<String, dynamic>> _authenticatedPost(
-    String url,
-    Map<String, dynamic> body,
+  Future<Map<String, dynamic>> simpanHasilWawancara(
+    Map<String, dynamic> results,
+    Map<String, dynamic> metrics,
+    int durationInSeconds,
+    String difficulty,
   ) async {
     try {
-      var response = await http.post(
-        Uri.parse(url),
+      final response = await http.post(
+        Uri.parse('$baseUrl/save_wawancara'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_accessToken',
         },
-        body: jsonEncode(body),
+        body: jsonEncode({
+          'results': results,
+          'metrics': metrics,
+          'recording_duration': durationInSeconds,
+          'difficulty': difficulty,
+          'feedback': metrics['feedback'],
+        }),
       );
 
       if (response.statusCode == 401) {
-        final refreshed = await refreshToken();
-        if (refreshed) {
-          response = await http.post(
-            Uri.parse(url),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $_accessToken',
-            },
-            body: jsonEncode(body),
-          );
-        }
+        if (!await refreshToken()) throw Exception('Failed to refresh token');
+        return await simpanHasilWawancara(
+          results,
+          metrics,
+          durationInSeconds,
+          difficulty,
+        );
       }
 
       return _handleResponse(response);
@@ -244,28 +341,7 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> _authenticatedGet(String url) async {
-    try {
-      var response = await http.get(
-        Uri.parse(url),
-        headers: {'Authorization': 'Bearer $_accessToken'},
-      );
-
-      if (response.statusCode == 401) {
-        final refreshed = await refreshToken();
-        if (refreshed) {
-          response = await http.get(
-            Uri.parse(url),
-            headers: {'Authorization': 'Bearer $_accessToken'},
-          );
-        }
-      }
-
-      return _handleResponse(response);
-    } catch (e) {
-      return _handleError(e);
-    }
-  }
+  // ==================== HELPER METHODS ====================
 
   Map<String, dynamic> _handleResponse(http.Response response) {
     if (response.statusCode == 200) {

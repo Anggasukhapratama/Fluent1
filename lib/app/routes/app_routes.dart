@@ -10,7 +10,10 @@ abstract class Routes {
   static const SPLASH = _Paths.SPLASH;
   static const INTRO = _Paths.INTRO;
   static const DETECTION = _Paths.DETECTION;
-  static const INTERVIEW = _Paths.INTERVIEW;
+  static const AKTIVITAS = _Paths.AKTIVITAS;
+  static const PROFILE = _Paths.PROFILE;
+  static const HRD_SIMULATION = _Paths.HRD_SIMULATION;
+  static const LAINNYA = _Paths.LAINNYA;
 }
 
 abstract class _Paths {
@@ -22,5 +25,8 @@ abstract class _Paths {
   static const SPLASH = '/splash';
   static const INTRO = '/intro';
   static const DETECTION = '/detection';
-  static const INTERVIEW = '/interview';
+  static const AKTIVITAS = '/aktivitas';
+  static const PROFILE = '/profile';
+  static const HRD_SIMULATION = '/hrd-simulation';
+  static const LAINNYA = '/lainnya';
 }

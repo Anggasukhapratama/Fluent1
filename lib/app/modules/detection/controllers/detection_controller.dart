@@ -306,6 +306,64 @@ class DetectionController extends GetxController {
 
     summary.value = _generateEnhancedSummary();
     showResults.value = true;
+
+    // Prepare data to save
+    final metrics = {
+      'accuracy': speechAccuracy.value,
+      'wpm': wordsPerMinute.value,
+      'fluency': fluencyScore.value,
+      'pauses': pauseCount.value,
+      'feedback': _generateFeedbackList(),
+    };
+
+    final results = {
+      'emotion': emotion.value,
+      'mouth': mouth.value,
+      'pose': pose.value,
+      'script': scriptParts.join('\n'),
+      'spoken_text': recognizedText.value,
+    };
+
+    // Send to backend - only change this line
+    await apiService.simpanHasilWawancara(
+      results,
+      metrics,
+      duration,
+      selectedDifficulty.value,
+    );
+  }
+
+  List<String> _generateFeedbackList() {
+    final feedbacks = <String>[];
+
+    // Speaking speed feedback
+    if (wordsPerMinute.value > 180) {
+      feedbacks.add("Terlalu cepat! Idealnya 120-160 kata per menit");
+    } else if (wordsPerMinute.value < 100) {
+      feedbacks.add("Terlalu lambat! Tingkatkan kecepatan bicara");
+    }
+
+    // Pause/filler words feedback
+    if (pauseCount.value > 3) {
+      feedbacks.add("Terlalu banyak jeda (${pauseCount.value}x)");
+    }
+
+    // Posture feedback
+    if (pose.value.toLowerCase().contains("miring")) {
+      feedbacks.add("Pertahankan postur tubuh yang tegak");
+    }
+
+    // Emotion feedback
+    if (emotion.value.toLowerCase().contains("netral")) {
+      feedbacks.add("Tambahkan ekspresi wajah yang lebih hidup");
+    }
+
+    // Default positive feedback if no issues
+    if (feedbacks.isEmpty) {
+      feedbacks.add("Performamu sudah bagus! Pertahankan!");
+    }
+
+    return feedbacks;
   }
 
   String _generateEnhancedSummary() {
