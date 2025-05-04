@@ -14,6 +14,7 @@ abstract class Routes {
   static const PROFILE = _Paths.PROFILE;
   static const HRD_SIMULATION = _Paths.HRD_SIMULATION;
   static const LAINNYA = _Paths.LAINNYA;
+  static const PROGRES = _Paths.PROGRES;
 }
 
 abstract class _Paths {
@@ -29,4 +30,5 @@ abstract class _Paths {
   static const PROFILE = '/profile';
   static const HRD_SIMULATION = '/hrd-simulation';
   static const LAINNYA = '/lainnya';
+  static const PROGRES = '/progres';
 }

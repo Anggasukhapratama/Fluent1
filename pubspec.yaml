@@ -51,6 +51,7 @@ dependencies:
   get_storage: ^2.1.0 # Lebih ringan dari SharedPreferences
   avatar_glow: ^2.0.1
   confetti: ^0.7.0
+  syncfusion_flutter_charts: ^22.1.40
 
 
 dev_dependencies:

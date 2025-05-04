@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -8,10 +9,15 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:fluent/app/data/services/api_service.dart';
 
 class DetectionController extends GetxController {
+  DateTime? _lastAnalysisTime;
+  DateTime? _lastFrameTime;
   late CameraController cameraController;
   late List<CameraDescription> cameras;
   final ApiService apiService = ApiService();
   final stt.SpeechToText speech = stt.SpeechToText();
+  final RxDouble _analysisConfidence = 0.0.obs;
+  final RxInt _successfulFrames = 0.obs;
+  final RxInt _totalFrames = 0.obs;
 
   // Camera & Analysis States
   RxBool isCameraInitialized = false.obs;
@@ -96,14 +102,24 @@ class DetectionController extends GetxController {
         return;
       }
 
+      // Cari kamera depan
+      int frontCameraIndex = cameras.indexWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+      );
+
+      // Jika tidak ada kamera depan, gunakan kamera pertama
+      if (frontCameraIndex == -1) frontCameraIndex = 0;
+
       cameraController = CameraController(
-        cameras[selectedCameraIndex.value],
+        cameras[frontCameraIndex],
         ResolutionPreset.medium,
         enableAudio: false,
       );
 
       await cameraController.initialize();
       isCameraInitialized.value = true;
+      selectedCameraIndex.value =
+          frontCameraIndex; // Simpan indeks kamera yang digunakan
     } catch (e) {
       result.value = "Failed to initialize camera: $e";
     }
@@ -125,9 +141,28 @@ class DetectionController extends GetxController {
     isCameraInitialized.value = false;
     await cameraController.dispose();
 
-    selectedCameraIndex.value =
-        (selectedCameraIndex.value + 1) % cameras.length;
-    await initializeCamera();
+    // Cari indeks kamera dengan arah lensa yang berbeda
+    final currentDirection = cameras[selectedCameraIndex.value].lensDirection;
+    int newIndex = 0;
+
+    for (int i = 0; i < cameras.length; i++) {
+      if (cameras[i].lensDirection != currentDirection) {
+        newIndex = i;
+        break;
+      }
+    }
+
+    selectedCameraIndex.value = newIndex;
+
+    // Inisialisasi kamera baru
+    cameraController = CameraController(
+      cameras[selectedCameraIndex.value],
+      ResolutionPreset.medium,
+      enableAudio: false,
+    );
+
+    await cameraController.initialize();
+    isCameraInitialized.value = true;
   }
 
   void startCountdown() async {
@@ -262,6 +297,16 @@ class DetectionController extends GetxController {
     return union == 0 ? 0 : intersection / union;
   }
 
+  double _calculateEnhancedScore() {
+    double baseScore = speechAccuracy.value * 0.4;
+    double fluencyBonus = fluencyScore.value * 0.3;
+    double wpmScore =
+        (wordsPerMinute.value > 100 && wordsPerMinute.value < 180) ? 20 : 0;
+    double poseScore = pose.value.toLowerCase().contains("baik") ? 10 : 0;
+
+    return (baseScore + fluencyBonus + wpmScore + poseScore).clamp(0, 100);
+  }
+
   Future<void> analyzeSnapshot() async {
     if (!cameraController.value.isInitialized || !isRecording.value) return;
 
@@ -270,24 +315,46 @@ class DetectionController extends GetxController {
       final bytes = await file.readAsBytes();
       final base64Image = base64Encode(bytes);
 
-      final response = await apiService.analyzeRealtime(base64Image);
+      // Optimasi: Gunakan timer untuk membatasi frekuensi pengiriman
+      if (_lastAnalysisTime != null &&
+          DateTime.now().difference(_lastAnalysisTime!) <
+              const Duration(seconds: 1)) {
+        return;
+      }
+      _lastAnalysisTime = DateTime.now();
+
+      final response = await apiService
+          .analyzeRealtime(base64Image)
+          .timeout(const Duration(seconds: 3)); // Batas waktu timeout
 
       if (response['status'] == 'success') {
         emotion.value = response['results']['emotion'] ?? "-";
         mouth.value = response['results']['mouth'] ?? "-";
         pose.value = response['results']['pose'] ?? "-";
-      } else {
-        print("Analysis error: ${response['message']}");
+
+        // Optimasi scoring
+        _updateScoresBasedOnDetection();
       }
     } catch (e) {
-      print("Error analyzing frame: $e");
+      print("Optimized analysis error: $e");
+    }
+  }
+
+  void _updateScoresBasedOnDetection() {
+    // Berikan bonus score jika deteksi positif
+    if (emotion.value.toLowerCase().contains("happy")) {
+      speechAccuracy.value = min(speechAccuracy.value + 5, 100);
+    }
+
+    if (pose.value.toLowerCase().contains("baik")) {
+      fluencyScore.value = min(fluencyScore.value + 3, 100);
     }
   }
 
   void startRealtimeDetection() {
     isRecording.value = true;
     _timer?.cancel();
-    _timer = Timer.periodic(Duration(seconds: 2), (timer) async {
+    _timer = Timer.periodic(const Duration(milliseconds: 800), (timer) async {
       await analyzeSnapshot();
     });
   }

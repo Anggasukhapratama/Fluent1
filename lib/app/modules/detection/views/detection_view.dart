@@ -20,7 +20,7 @@ class DetectionView extends StatelessWidget {
         preferredSize: const Size.fromHeight(50),
         child: AppBar(
           title: const Text(
-            'Latihan Wawancara AI',
+            'Deteksi Manusia Ikan Bos',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           backgroundColor: const Color(0xFFE67E22), // Orange-red theme

@@ -310,6 +310,17 @@ class ApiService {
     String difficulty,
   ) async {
     try {
+      // Debug print sebelum mengirim request
+      print("══════════[DEBUG REQUEST]══════════");
+      print("Mengirim data ke /save_wawancara");
+      print("Base URL: $baseUrl");
+      print("Results: ${jsonEncode(results)}");
+      print("Metrics: ${jsonEncode(metrics)}");
+      print("Duration: $durationInSeconds");
+      print("Difficulty: $difficulty");
+      print("Token: ${_accessToken?.substring(0, 10)}...");
+      print("═══════════════════════════════════");
+
       final response = await http.post(
         Uri.parse('$baseUrl/save_wawancara'),
         headers: {
@@ -325,14 +336,66 @@ class ApiService {
         }),
       );
 
+      // Debug print setelah menerima response
+      print("══════════[DEBUG RESPONSE]═════════");
+      print("Status Code: ${response.statusCode}");
+      print("Response Body: ${response.body}");
+      print("═══════════════════════════════════");
+
+      return _handleResponse(response);
+    } catch (e) {
+      print("══════════[DEBUG ERROR]════════════");
+      print("Error saat simpan hasil: $e");
+      print("═══════════════════════════════════");
+      return _handleError(e);
+    }
+  }
+
+  // ==================== PROGRES METHODS ====================
+
+  // Dalam class ApiService tambahkan:
+
+  Future<Map<String, dynamic>> getProgressData() async {
+    try {
+      var response = await http
+          .get(
+            Uri.parse('$baseUrl/progress'),
+            headers: {'Authorization': 'Bearer $_accessToken'},
+          )
+          .timeout(const Duration(seconds: 10));
+
       if (response.statusCode == 401) {
         if (!await refreshToken()) throw Exception('Failed to refresh token');
-        return await simpanHasilWawancara(
-          results,
-          metrics,
-          durationInSeconds,
-          difficulty,
-        );
+        return getProgressData();
+      }
+
+      final data = jsonDecode(response.body);
+      return data;
+    } on SocketException {
+      return {'status': 'fail', 'message': 'Tidak ada koneksi internet'};
+    } on TimeoutException {
+      return {'status': 'fail', 'message': 'Timeout, coba lagi'};
+    } catch (e) {
+      return {'status': 'fail', 'message': 'Error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> saveProgressMetrics(
+    Map<String, dynamic> metrics,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/progress/metrics'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_accessToken',
+        },
+        body: jsonEncode(metrics),
+      );
+
+      if (response.statusCode == 401) {
+        if (!await refreshToken()) throw Exception('Failed to refresh token');
+        return saveProgressMetrics(metrics);
       }
 
       return _handleResponse(response);

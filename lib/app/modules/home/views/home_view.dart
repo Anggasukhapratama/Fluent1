@@ -83,6 +83,9 @@ class HomeView extends StatelessWidget {
           if (index == 1) {
             Get.toNamed(Routes.AKTIVITAS);
           }
+          if (index == 2) {
+            Get.toNamed(Routes.PROGRES);
+          }
           if (index == 3) {
             Get.toNamed(Routes.PROFILE);
           }
