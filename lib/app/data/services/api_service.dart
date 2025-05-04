@@ -255,22 +255,63 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> login(String username, String password) async {
+  Future<Map<String, dynamic>> login(String email, String password) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'username': username, 'password': password}),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email, 'password': password}),
+          )
+          .timeout(Duration(seconds: 10));
 
-      final result = _handleResponse(response);
-      if (result['status'] == 'success') {
+      final result = jsonDecode(response.body);
+
+      if (response.statusCode == 429) {
+        // Handle blocked case
+        final remaining = result['remaining_seconds'] ?? 30;
+        return {
+          'status': 'fail',
+          'message':
+              result['message'] ??
+              'Terlalu banyak percobaan. Coba lagi dalam $remaining detik',
+          'blocked': true,
+          'remaining_seconds': remaining,
+        };
+      }
+
+      if (response.statusCode == 200) {
         await _saveTokens(result['access_token'], result['refresh_token']);
         if (result['user'] != null) await _saveUserData(result['user']);
+        return result;
       }
-      return result;
+
+      return {
+        'status': 'fail',
+        'message': result['message'] ?? 'Email atau password salah',
+        'remaining_attempts': result['remaining_attempts'] ?? 3,
+      };
+    } on TimeoutException {
+      return {'status': 'fail', 'message': 'Timeout, coba lagi'};
     } catch (e) {
-      return _handleError(e);
+      return {'status': 'fail', 'message': 'Gagal terhubung ke server'};
+    }
+  }
+
+  Map<String, dynamic> _handleResponse(http.Response response) {
+    try {
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return data;
+      } else {
+        // Return the server's error message if available
+        return {
+          'status': 'fail',
+          'message': data['message'] ?? 'Terjadi kesalahan',
+        };
+      }
+    } catch (e) {
+      return {'status': 'fail', 'message': 'Format respons tidak valid'};
     }
   }
 
@@ -405,17 +446,6 @@ class ApiService {
   }
 
   // ==================== HELPER METHODS ====================
-
-  Map<String, dynamic> _handleResponse(http.Response response) {
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      return {
-        'status': 'fail',
-        'message': 'Error ${response.statusCode}: ${response.body}',
-      };
-    }
-  }
 
   Map<String, dynamic> _handleError(dynamic e) {
     return {'status': 'fail', 'message': 'Network error: ${e.toString()}'};

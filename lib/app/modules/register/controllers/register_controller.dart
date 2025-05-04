@@ -8,8 +8,9 @@ class RegisterController extends GetxController {
   final passwordController = TextEditingController();
   final occupationController = TextEditingController();
 
-  // Mendeklarasikan selectedGender sebagai RxString
-  var selectedGender = 'Laki-laki'.obs; // Pilihan default
+  final selectedGender = 'Laki-laki'.obs;
+  final showPassword = false.obs;
+  final isLoading = false.obs;
 
   final ApiService _apiService = ApiService();
 
@@ -17,29 +18,79 @@ class RegisterController extends GetxController {
     final email = emailController.text.trim();
     final username = usernameController.text.trim();
     final password = passwordController.text.trim();
-    final gender = selectedGender.value; // Ambil nilai yang dipilih
+    final gender = selectedGender.value;
     final occupation = occupationController.text.trim();
 
     if (email.isEmpty ||
         username.isEmpty ||
         password.isEmpty ||
-        gender.isEmpty ||
         occupation.isEmpty) {
-      Get.snackbar("Error", "Semua field wajib diisi");
+      Get.snackbar(
+        "Perhatian",
+        "Semua field wajib diisi",
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
       return;
     }
 
-    final result = await _apiService.register(
-      email,
-      username,
-      password,
-      gender,
-      occupation,
-    );
-
-    Get.snackbar(result['status'], result['message']);
-    if (result['status'] == 'success') {
-      Get.toNamed('/login');
+    if (!GetUtils.isEmail(email)) {
+      Get.snackbar(
+        "Perhatian",
+        "Format email tidak valid",
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
     }
+
+    if (password.length < 8) {
+      Get.snackbar(
+        "Perhatian",
+        "Password minimal 8 karakter",
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
+    isLoading.value = true;
+    try {
+      final result = await _apiService.register(
+        email,
+        username,
+        password,
+        gender,
+        occupation,
+      );
+
+      Get.snackbar(
+        result['status'] == 'success' ? "Sukses" : "Gagal",
+        result['message'],
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor:
+            result['status'] == 'success' ? Colors.green : Colors.red,
+        colorText: Colors.white,
+      );
+
+      if (result['status'] == 'success') {
+        await Future.delayed(const Duration(seconds: 2));
+        Get.offAllNamed('/login');
+      }
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  @override
+  void onClose() {
+    emailController.dispose();
+    usernameController.dispose();
+    passwordController.dispose();
+    occupationController.dispose();
+    super.onClose();
   }
 }
